@@ -46,6 +46,8 @@ elif host_machine.system() == 'sunos'
   socket = cxx.find_library('socket')
   network_service_library = cxx.find_library('nsl')
   deps_other += [socket, network_service_library]
+  # Add position-independent code flag for illumos/Solaris shared libraries
+  add_project_arguments('-fPIC', language : 'cpp')
 endif
 
 blake3 = dependency(
