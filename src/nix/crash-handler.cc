@@ -8,7 +8,7 @@
 #include <sstream>
 
 // Darwin and FreeBSD stdenv do not define _GNU_SOURCE but do have _Unwind_Backtrace.
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__sun)
 #  define BOOST_STACKTRACE_GNU_SOURCE_NOT_REQUIRED
 #endif
 
