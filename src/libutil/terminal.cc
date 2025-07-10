@@ -9,6 +9,9 @@
 # define isatty _isatty
 #else
 # include <sys/ioctl.h>
+# ifdef __sun
+#  include <termios.h>
+# endif
 #endif
 #include <unistd.h>
 #include <widechar_width.h>
