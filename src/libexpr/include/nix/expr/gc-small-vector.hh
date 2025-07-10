@@ -10,14 +10,17 @@
 template <typename T>
 struct illumos_traceable_allocator : public traceable_allocator<T> {
     using traceable_allocator<T>::traceable_allocator;
+    template <class U> struct rebind { typedef illumos_traceable_allocator<U> other; };
 };
 
 template <>
-struct illumos_traceable_allocator<void> : public traceable_allocator<void> {
+struct illumos_traceable_allocator<void> {
 public:
-    typedef void value_type;
-    typedef void* pointer;
+    typedef size_t      size_type;
+    typedef ptrdiff_t   difference_type;
+    typedef void*       pointer;
     typedef const void* const_pointer;
+    typedef void        value_type;
     template <class U> struct rebind { typedef illumos_traceable_allocator<U> other; };
 };
 #endif
