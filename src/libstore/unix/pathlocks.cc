@@ -51,9 +51,17 @@ bool lockFile(Descriptor desc, LockType lockType, bool wait)
     if (wait) {
         while (flock(desc, type) != 0) {
             checkInterrupt();
-            if (errno != EINTR)
+            if (errno != EINTR) {
+#ifdef __sun
+                // On illumos/Solaris, unlocking may fail with EINVAL if the file descriptor
+                // is no longer valid or the lock was already released. This is safe to ignore
+                // for unlock operations.
+                if (lockType == ltNone && errno == EINVAL) {
+                    return true;
+                }
+#endif
                 throw SysError("acquiring/releasing lock");
-            else
+            } else
                 return false;
         }
     } else {
@@ -61,8 +69,17 @@ bool lockFile(Descriptor desc, LockType lockType, bool wait)
             checkInterrupt();
             if (errno == EWOULDBLOCK)
                 return false;
-            if (errno != EINTR)
+            if (errno != EINTR) {
+#ifdef __sun
+                // On illumos/Solaris, unlocking may fail with EINVAL if the file descriptor
+                // is no longer valid or the lock was already released. This is safe to ignore
+                // for unlock operations.
+                if (lockType == ltNone && errno == EINVAL) {
+                    return true;
+                }
+#endif
                 throw SysError("acquiring/releasing lock");
+            }
         }
     }
 

@@ -102,6 +102,10 @@ endif
 if host_machine.system() == 'windows'
   wsock32 = cxx.find_library('wsock32')
   deps_other += [ wsock32 ]
+elif host_machine.system() == 'sunos'
+  socket = cxx.find_library('socket')
+  network_service_library = cxx.find_library('nsl')
+  deps_other += [socket, network_service_library]
 endif
 
 subdir('nix-meson-build-support/libatomic')

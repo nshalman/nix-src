@@ -31,6 +31,13 @@ deps_private_maybe_subproject = [
 deps_public_maybe_subproject = []
 subdir('nix-meson-build-support/subprojects')
 
+# Add socket libraries for illumos/Solaris
+if host_machine.system() == 'sunos'
+  socket = cxx.find_library('socket')
+  network_service_library = cxx.find_library('nsl')
+  deps_other += [socket, network_service_library]
+endif
+
 subdir('nix-meson-build-support/export-all-symbols')
 subdir('nix-meson-build-support/windows-version')
 
