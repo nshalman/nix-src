@@ -22,9 +22,18 @@ configdata_priv = configuration_data()
 configdata_priv.set_quoted('PACKAGE_VERSION', meson.project_version())
 
 # Used in public header.
+# Detect illumos vs other SunOS systems using uname -o
+nix_system = host_machine.system()
+if nix_system == 'sunos'
+  uname_o = run_command('uname', '-o', check: false)
+  if uname_o.returncode() == 0 and uname_o.stdout().strip() == 'illumos'
+    nix_system = 'illumos'
+  endif
+endif
+
 configdata_pub.set_quoted(
   'NIX_LOCAL_SYSTEM',
-  host_machine.cpu_family() + '-' + host_machine.system(),
+  host_machine.cpu_family() + '-' + nix_system,
   description :
     'This is the system name Nix expects for local running instance of Nix.\n\n'
     + 'See the "system" setting for additional details',
