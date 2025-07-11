@@ -929,8 +929,16 @@ void LocalDerivationGoal::startBuilder()
         if (chown(slaveName.c_str(), buildUser->getUID(), 0))
             throw SysError("changing owner of pseudoterminal slave");
     }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__sun)
     else {
+        if (grantpt(builderOut.get()))
+            throw SysError("granting access to pseudoterminal slave");
+    }
+#endif
+
+#ifdef __sun
+    // On illumos/Solaris, grantpt is required even when build users are present
+    if (buildUser) {
         if (grantpt(builderOut.get()))
             throw SysError("granting access to pseudoterminal slave");
     }
@@ -948,6 +956,15 @@ void LocalDerivationGoal::startBuilder()
 
         // Put the pt into raw mode to prevent \n -> \r\n translation.
         struct termios term;
+#ifdef __sun
+        // On illumos/Solaris, pseudoterminal may not support termios operations
+        // in all contexts. Try to set raw mode but don't fail if it's not supported.
+        if (tcgetattr(builderOut.get(), &term) == 0) {
+            cfmakeraw(&term);
+            tcsetattr(builderOut.get(), TCSANOW, &term);
+        }
+        // If termios operations fail on illumos, continue without raw mode
+#else
         if (tcgetattr(builderOut.get(), &term))
             throw SysError("getting pseudoterminal attributes");
 
@@ -955,6 +972,7 @@ void LocalDerivationGoal::startBuilder()
 
         if (tcsetattr(builderOut.get(), TCSANOW, &term))
             throw SysError("putting pseudoterminal into raw mode");
+#endif
 
         if (dup2(builderOut.get(), STDERR_FILENO) == -1)
             throw SysError("cannot pipe standard error into log file");
