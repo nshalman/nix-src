@@ -33,6 +33,15 @@ configdata_priv.set_quoted(
 subdir('nix-meson-build-support/default-system-cpu')
 
 # Used in public header.
+# Detect illumos vs other SunOS systems using uname -o
+nix_system = host_machine.system()
+if nix_system == 'sunos'
+  uname_o = run_command('uname', '-o', check: false)
+  if uname_o.returncode() == 0 and uname_o.stdout().strip() == 'illumos'
+    nix_system = 'illumos'
+  endif
+endif
+
 configdata_pub.set_quoted(
   'NIX_LOCAL_SYSTEM',
   nix_system_cpu + '-' + host_machine.system(),
