@@ -313,6 +313,13 @@ Roots LocalStore::findRoots(bool censor)
  */
 typedef std::unordered_map<std::string, std::unordered_set<std::string>> UncheckedRoots;
 
+static std::string quoteRegexChars(const std::string & raw)
+{
+    static auto specialRegex = std::regex(R"([.^$\\*+?()\[\]{}|])");
+    return std::regex_replace(raw, specialRegex, R"(\$&)");
+}
+
+#ifndef __sun
 static void readProcLink(const std::filesystem::path & file, UncheckedRoots & roots)
 {
     std::filesystem::path buf;
@@ -328,12 +335,63 @@ static void readProcLink(const std::filesystem::path & file, UncheckedRoots & ro
     if (buf.is_absolute())
         roots[buf.string()].emplace(file.string());
 }
+#endif
 
-static std::string quoteRegexChars(const std::string & raw)
+#ifdef __sun
+static void readIllumosProcessRoots(const std::string & pid, const std::string & storeDir, UncheckedRoots & unchecked)
 {
-    static auto specialRegex = std::regex(R"([.^$\\*+?()\[\]{}|])");
-    return std::regex_replace(raw, specialRegex, R"(\$&)");
+    auto storePathRegex = std::regex(quoteRegexChars(storeDir) + R"(/[0-9a-z]+[0-9a-zA-Z\+\-\._\?=]*)");
+
+    // Use pwdx to get current working directory
+    try {
+        auto pwdxOutput = runProgram("pwdx", true, { pid });
+        // pwdx output format: "PID:\t/path/to/cwd"
+        auto colonPos = pwdxOutput.find(':');
+        if (colonPos != std::string::npos) {
+            auto path = pwdxOutput.substr(colonPos + 1);
+            // Trim whitespace
+            path.erase(0, path.find_first_not_of(" \t\n\r"));
+            path.erase(path.find_last_not_of(" \t\n\r") + 1);
+            if (!path.empty() && path[0] == '/')
+                unchecked[path].emplace(fmt("/proc/%s/cwd", pid));
+        }
+    } catch (ExecError & e) {
+        // Process may have exited, ignore
+    }
+
+    // Use pfiles to get open file descriptors
+    try {
+        auto pfilesOutput = runProgram("pfiles", true, { pid });
+        // Parse pfiles output for absolute paths
+        auto lines = tokenizeString<std::vector<std::string>>(pfilesOutput, "\n");
+        for (const auto & line : lines) {
+            // Look for lines that contain absolute paths
+            size_t slashPos = line.find('/');
+            if (slashPos != std::string::npos) {
+                // Extract path from the line
+                size_t endPos = line.find_first_of(" \t", slashPos);
+                std::string path = (endPos != std::string::npos) 
+                    ? line.substr(slashPos, endPos - slashPos)
+                    : line.substr(slashPos);
+                if (!path.empty() && path[0] == '/')
+                    unchecked[path].emplace(fmt("pfiles:%s", pid));
+            }
+        }
+    } catch (ExecError & e) {
+        // Process may have exited or no permissions, ignore
+    }
+
+    // Use penv to scan environment variables for store paths
+    try {
+        auto penvOutput = runProgram("penv", true, { pid });
+        auto env_end = std::sregex_iterator{};
+        for (auto i = std::sregex_iterator(penvOutput.begin(), penvOutput.end(), storePathRegex); i != env_end; ++i)
+            unchecked[i->str()].emplace(fmt("penv:%s", pid));
+    } catch (ExecError & e) {
+        // Process may have exited or no permissions, ignore
+    }
 }
+#endif
 
 #ifdef __linux__
 static void readFileRoots(const std::filesystem::path & path, UncheckedRoots & roots)
@@ -361,6 +419,9 @@ void LocalStore::findRuntimeRoots(Roots & roots, bool censor)
             checkInterrupt();
             if (std::regex_match(ent->d_name, digitsRegex)) {
                 try {
+#ifdef __sun
+                    readIllumosProcessRoots(ent->d_name, storeDir, unchecked);
+#else
                     readProcLink(fmt("/proc/%s/exe" ,ent->d_name), unchecked);
                     readProcLink(fmt("/proc/%s/cwd", ent->d_name), unchecked);
 
@@ -396,6 +457,7 @@ void LocalStore::findRuntimeRoots(Roots & roots, bool censor)
                     auto env_end = std::sregex_iterator{};
                     for (auto i = std::sregex_iterator{envString.begin(), envString.end(), storePathRegex}; i != env_end; ++i)
                         unchecked[i->str()].emplace(envFile);
+#endif
                 } catch (SystemError & e) {
                     if (errno == ENOENT || errno == EACCES || errno == ESRCH)
                         continue;
@@ -407,7 +469,7 @@ void LocalStore::findRuntimeRoots(Roots & roots, bool censor)
             throw SysError("iterating /proc");
     }
 
-#if !defined(__linux__)
+#if !defined(__linux__) && !defined(__sun)
     // lsof is really slow on OS X. This actually causes the gc-concurrent.sh test to fail.
     // See: https://github.com/NixOS/nix/issues/3011
     // Because of this we disable lsof when running the tests.
