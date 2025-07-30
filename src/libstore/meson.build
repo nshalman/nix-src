@@ -36,9 +36,17 @@ subdir('nix-meson-build-support/default-system-cpu')
 # Detect illumos vs other SunOS systems using uname -o
 nix_system = host_machine.system()
 if nix_system == 'sunos'
+  # Try to detect using uname -o if available (might fail in sandboxed builds)
   uname_o = run_command('uname', '-o', check: false)
   if uname_o.returncode() == 0 and uname_o.stdout().strip() == 'illumos'
     nix_system = 'illumos'
+    message('Detected illumos system via uname -o')
+  else
+    # Default to illumos for SunOS in Nix builds
+    # This handles sandbox environments where uname might not work
+    # Since we're building on illumos via nixpkgs, this is a safe assumption
+    nix_system = 'illumos'
+    message('Defaulting to illumos for SunOS system (likely in sandbox)')
   endif
 endif
 
